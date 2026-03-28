@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCA Workflow — Interactive Flowchart</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+    padding-top: 64px;
+    padding-bottom: 48px;
+  }
+
+  /* ── Sticky mini-nav ── */
+  .minimap {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    background: rgba(13,17,23,0.95);
+    border-bottom: 1px solid #21262d;
+    backdrop-filter: blur(8px);
+    padding: 0 16px;
+  }
+  .minimap-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 10px 0;
+  }
+  .minimap-inner::-webkit-scrollbar { display: none; }
+  .mm-item {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+  }
+  .mm-pill {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #8b949e;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .mm-pill:hover {
+    background: #2d333b;
+    color: #e6edf3;
+    border-color: #8b949e;
+  }
+  .mm-pill.active {
+    background: color-mix(in srgb, var(--c, #58a6ff) 22%, transparent);
+    color: var(--c, #58a6ff);
+    border-color: var(--c, #58a6ff);
+  }
+  .mm-arrow {
+    color: #30363d;
+    font-size: 0.65rem;
+    padding: 0 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── Main layout ── */
+  main { padding: 32px 16px; }
+
+  h1 {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #58a6ff;
+    margin-bottom: 6px;
+    letter-spacing: 0.04em;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 0.82rem;
+    color: #8b949e;
+    margin-bottom: 28px;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    max-width: 880px;
+    margin: 0 auto 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .step-counter {
+    font-size: 0.72rem;
+    color: #8b949e;
+    margin-right: auto;
+  }
+  .key-hint {
+    font-size: 0.68rem;
+    color: #484f58;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+  .btn {
+    font-size: 0.75rem;
+    padding: 5px 14px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #c9d1d9;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: #2d333b; border-color: #8b949e; }
+
+  /* ── Pipeline ── */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 880px;
+    margin: 0 auto;
+  }
+
+  /* ── Node card ── */
+  .node {
+    width: 100%;
+    border-radius: 12px;
+    border: 1.5px solid #30363d;
+    background: #161b22;
+    padding: 18px 22px;
+    position: relative;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    outline: none;
+  }
+  .node:hover {
+    border-color: var(--accent, #58a6ff);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #58a6ff) 18%, transparent);
+    background: #1c2128;
+  }
+  .node.active {
+    border-color: var(--accent, #58a6ff);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, #58a6ff) 22%, transparent);
+  }
+  .node.focused:not(.active) {
+    border-color: color-mix(in srgb, var(--accent, #58a6ff) 50%, #30363d);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #58a6ff) 10%, transparent);
+  }
+
+  /* colour bands */
+  .phase-load   { --accent: #79c0ff; }
+  .phase-clean  { --accent: #56d364; }
+  .phase-raw    { --accent: #f78166; }
+  .phase-weight { --accent: #ffa657; }
+  .phase-dist   { --accent: #d2a8ff; }
+  .phase-rel    { --accent: #79c0ff; }
+  .phase-ols    { --accent: #56d364; }
+  .phase-robust { --accent: #ffa657; }
+  .phase-pnl    { --accent: #f78166; }
+  .phase-fill   { --accent: #d2a8ff; }
+  .phase-ml     { --accent: #ff7b72; }
+
+  /* left accent stripe */
+  .node::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 12px; bottom: 12px;
+    width: 4px;
+    border-radius: 4px;
+    background: var(--accent, #58a6ff);
+  }
+
+  .node-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-left: 8px;
+  }
+
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--accent, #58a6ff) 22%, transparent);
+    color: var(--accent, #58a6ff);
+    border: 1px solid color-mix(in srgb, var(--accent, #58a6ff) 50%, transparent);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .node-title {
+    font-size: 0.97rem;
+    font-weight: 600;
+    color: #e6edf3;
+    flex: 1;
+  }
+  .node-title .en {
+    font-size: 0.78rem;
+    color: #8b949e;
+    font-weight: 400;
+    margin-left: 6px;
+  }
+
+  .chevron {
+    font-size: 0.7rem;
+    color: #8b949e;
+    transition: transform 0.25s;
+    flex-shrink: 0;
+  }
+  .node.active .chevron { transform: rotate(180deg); }
+
+  /* expandable body */
+  .node-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease, padding-top 0.35s ease, opacity 0.3s ease;
+    opacity: 0;
+    padding-left: 12px;
+    border-top: 1px solid transparent;
+  }
+  .node.active .node-body {
+    max-height: 2000px;
+    opacity: 1;
+    padding-top: 14px;
+    border-top-color: #21262d;
+    margin-top: 14px;
+  }
+
+  .node-body p {
+    font-size: 0.82rem;
+    color: #c9d1d9;
+    line-height: 1.65;
+    margin-bottom: 10px;
+  }
+
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .pill {
+    font-size: 0.72rem;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: #21262d;
+    color: #8b949e;
+    border: 1px solid #30363d;
+  }
+
+  .finding {
+    background: color-mix(in srgb, var(--accent, #58a6ff) 10%, #161b22);
+    border-left: 3px solid var(--accent, #58a6ff);
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    color: #c9d1d9;
+    margin-top: 8px;
+  }
+  .finding strong { color: var(--accent, #58a6ff); }
+
+  /* EDA actual result block */
+  .result {
+    background: color-mix(in srgb, #56d364 8%, #161b22);
+    border-left: 3px solid #56d364;
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    color: #c9d1d9;
+    margin-top: 8px;
+  }
+  .result strong { color: #56d364; }
+  .result .num { color: #ffa657; font-weight: 700; }
+
+  code {
+    font-family: 'Cascadia Code', 'Consolas', 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: block;
+    color: #79c0ff;
+    margin: 8px 0;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  /* ── Connector arrow ── */
+  .connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    width: 100%;
+    padding: 0;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  /* top half of line */
+  .arrow-track {
+    width: 2px;
+    height: 22px;
+    flex-shrink: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      #484f58 0px,
+      #484f58 4px,
+      transparent 4px,
+      transparent 9px
+    );
+    background-size: 2px 9px;
+    animation: dash-down 0.55s linear infinite;
+  }
+  @keyframes dash-down {
+    from { background-position: 0 0; }
+    to   { background-position: 0 9px; }
+  }
+
+  /* label chip */
+  .c-label {
+    font-size: 0.63rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: #1c2128;
+    border: 1px solid #30363d;
+    color: #8b949e;
+    white-space: nowrap;
+    max-width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    cursor: default;
+    transition: border-color 0.2s, color 0.2s;
+    margin: 3px 0;
+  }
+  .connector:hover .c-label {
+    border-color: #58a6ff;
+    color: #c9d1d9;
+  }
+
+  /* bottom half of line */
+  .arrow-bottom {
+    width: 2px;
+    height: 18px;
+    flex-shrink: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      #484f58 0px,
+      #484f58 4px,
+      transparent 4px,
+      transparent 9px
+    );
+    background-size: 2px 9px;
+    animation: dash-down 0.55s linear infinite;
+  }
+
+  /* arrowhead */
+  .arrow-head {
+    width: 0;
+    height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 10px solid #484f58;
+    flex-shrink: 0;
+    transition: border-top-color 0.2s;
+  }
+  .connector:hover .arrow-head { border-top-color: #58a6ff; }
+
+  /* ── Table inside body ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin: 8px 0; }
+  th { background: #21262d; color: #8b949e; padding: 6px 10px; text-align: left; font-weight: 600; }
+  td { padding: 5px 10px; color: #c9d1d9; border-top: 1px solid #21262d; }
+  tr:hover td { background: #1c2128; }
+
+  /* ── Summary banner ── */
+  .summary {
+    max-width: 880px;
+    margin: 32px auto 0;
+    border-radius: 12px;
+    border: 1.5px solid #30363d;
+    background: #161b22;
+    padding: 20px 24px;
+  }
+  .summary h2 {
+    font-size: 0.9rem;
+    color: #8b949e;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 14px;
+  }
+  .summary-flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+  .sf-item {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .sf-item:hover { background: #2d333b; border-color: #58a6ff; color: #58a6ff; }
+  .sf-arrow { color: #484f58; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<!-- Sticky mini-nav (populated by JS) -->
+<nav class="minimap" id="minimap" aria-label="Pipeline navigation">
+  <div class="minimap-inner" id="minimapInner"></div>
+</nav>
+
+<main>
+  <h1>TCA Algorithm Evaluation — Full Workflow</h1>
+  <p class="subtitle">Transaction Cost Analysis · Causal Regression Pipeline · 11 nodes</p>
+
+  <div class="controls">
+    <span class="step-counter" id="stepCounter">0 / 11 expanded</span>
+    <button class="btn" onclick="expandAll()">Expand All</button>
+    <button class="btn" onclick="collapseAll()">Collapse All</button>
+    <span class="key-hint">↑ ↓ navigate &nbsp;·&nbsp; Enter expand</span>
+  </div>
+
+  <div class="pipeline" id="pipeline">
+
+    <!-- S0 -->
+    <div class="node phase-load" data-idx="0" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">S0</span>
+        <span class="node-title">数据加载与初探 <span class="en">Data Loading & EDA</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>从 <code style="display:inline;padding:1px 6px">TCA_problem.csv</code> 加载 40,000 条订单（algo_1 / algo_2 各 20,000），7 列，无缺失值。</p>
+        <div class="pills">
+          <span class="pill">40,000 orders</span>
+          <span class="pill">7 columns</span>
+          <span class="pill">no nulls</span>
+          <span class="pill">.describe()</span>
+        </div>
+        <table>
+          <tr><th>字段</th><th>均值</th><th>范围</th></tr>
+          <tr><td>IS_Slippage</td><td>223.88 bps</td><td>[-450.98, +2433.72]</td></tr>
+          <tr><td>ordersize</td><td>72.10</td><td>[0.46, 3286.61]</td></tr>
+          <tr><td>volatility</td><td>离散</td><td>100 / 200 / 300 bps</td></tr>
+          <tr><td>averageSpread</td><td>4.43 bps</td><td>[0.05, 172.03]</td></tr>
+          <tr><td>duration</td><td>0.70</td><td>[0.00, 1.00]</td></tr>
+          <tr><td>notional</td><td>3.43×10⁷ CNY</td><td>—</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">检测到极端尾部分布 → 需截尾处理</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- S0.1 -->
+    <div class="node phase-clean" data-idx="1" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">S0.1</span>
+        <span class="node-title">Winsorization <span class="en">Outlier Treatment (P1–P99)</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>TCA 数据具有厚尾特性（fat-tail）。将每列截断至 [P1, P99]，保留分布形态但消除极端杠杆点。HC3 稳健标准误可修正异方差，但<strong>无法处理极端杠杆点</strong>——因此 Winsorization 是前置必要步骤。</p>
+        <code>df[col] = df[col].clip(lower=p1, upper=p99)</code>
+        <table>
+          <tr><th>字段</th><th>P1 下限</th><th>P99 上限</th></tr>
+          <tr><td>IS_Slippage</td><td>~-283 bps</td><td>~+723 bps</td></tr>
+          <tr><td>ordersize</td><td>~0.72</td><td>~362.52</td></tr>
+          <tr><td>averageSpread</td><td>~0.05</td><td>~15.01</td></tr>
+          <tr><td>duration</td><td>~0.03</td><td>~1.00</td></tr>
+        </table>
+        <div class="finding"><strong>Why:</strong> 极端值（fat-finger / 黑天鹅）会严重偏移 OLS 系数，必须在回归前处理。</div>
+        <div class="result"><strong>EDA 实证：</strong> Winsor 前 algo_2 右尾延伸至 <span class="num">2500 bps</span>，截尾后收敛至约 <span class="num">850 bps</span>。处理后 algo_1 峰值更高（低成本区集中），algo_2 分布更宽（成本离散度更大）。两组分布至此才具有可比性。</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">数据已清洗 → 可进行初步统计比较</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q1 -->
+    <div class="node phase-raw" data-idx="2" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q1</span>
+        <span class="node-title">原始 IS 比较 <span class="en">Raw IS Slippage Comparison</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>直接比较两算法的 IS 均值，三种方法交叉验证：</p>
+        <div class="pills">
+          <span class="pill">Welch t-test</span>
+          <span class="pill">Mann-Whitney U</span>
+          <span class="pill">Bootstrap CI N=10,000</span>
+          <span class="pill">Cohen's d</span>
+        </div>
+        <code>t_stat, p_val = stats.ttest_ind(g1, g2, equal_var=False)   # Welch
+u_stat, u_p  = stats.mannwhitneyu(g1, g2, alternative='two-sided')
+boots = [np.mean(np.random.choice(g1,n,True)) - np.mean(np.random.choice(g2,n,True))
+         for _ in range(10_000)]</code>
+        <div class="finding"><strong>发现：</strong> algo_1 原始 IS 显著低于 algo_2——但此差异<strong>不能归因于算法优劣</strong>，可能是路由偏差（Q3 验证）。</div>
+        <div class="result"><strong>EDA 实证：</strong> Violin 图显示 algo_2 中位数比 algo_1 高约 <span class="num">40–50 bps</span>。CDF 图中蓝线（algo_1）全程在橙线左侧，最大分离发生在 <span class="num">100–300 bps</span> 区间。KDE 显示 algo_1 峰更高更窄，algo_2 右偏更严重。表面结论：algo_2 更贵——但此时<strong>尚未控制订单难度</strong>。</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">均值比较有偏 → 需名义价值加权</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q2 -->
+    <div class="node phase-weight" data-idx="3" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q2</span>
+        <span class="node-title">名义价值加权 IS <span class="en">Notional-Weighted IS + Pareto</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>简单均值将 100 股订单与 10,000 股订单等权处理——不合理。名义价值加权 IS 反映真实 P&amp;L 影响：</p>
+        <code>NW_IS = Σ(IS_i × notional_i) / Σ(notional_i)</code>
+        <p>Pareto 分析：按 notional 排序后，前 10% 的大额订单贡献绝大部分总执行成本。</p>
+        <code>Contribution_i = (IS_i × notional_i) / Σ(IS_j × notional_j) × 100%</code>
+        <div class="finding"><strong>意义：</strong> 对路由决策有直接指导——优先优化高名义价值订单。</div>
+        <div class="result"><strong>EDA 实证：</strong> NW_IS：algo_1 = <span class="num">206.9 bps</span>，algo_2 = <span class="num">278.4 bps</span>，差距 <span class="num">+71.5 bps</span>。Pareto 曲线显示前 <span class="num">20%</span> 大单贡献约 <span class="num">70%</span> 累积 IS。algo_2 累积曲线上升更陡峭，说明大单成本占比更高——大单路由选择是成本控制的核心战场。</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">加权 IS 建立 → 验证订单集同质性</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q3 -->
+    <div class="node phase-dist" data-idx="4" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q3</span>
+        <span class="node-title">特征分布分析 <span class="en">Feature Distribution + KS Test</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>绘制各特征在两算法间的 KDE 分布图，KS 检验判断订单是否同质。并构造新特征 <code style="display:inline;padding:1px 6px">exec_intensity</code> 作为 POV 代理：</p>
+        <code>exec_intensity = ordersize / max(duration, 1e-4)
+# 执行强度越高 → 在更短时间内向市场注入更大量 → 冲击更大</code>
+        <code>ks_stat, ks_p = stats.ks_2samp(df_algo1[feat], df_algo2[feat])
+# p &lt; 0.05 → 特征分布显著不同 → 混淆变量确认</code>
+        <div class="finding"><strong>关键发现：</strong> 特征分布显著不同 → 两算法被路由了不同难度的订单 → Q1 的原始比较结论<strong>不可靠</strong>，必须进行控制变量回归（Q5）。</div>
+        <div class="result"><strong>EDA 实证（路由偏差证据）：</strong><br>
+        ✅ <strong>ordersize</strong>：algo_2 log 中心约 <span class="num">4</span> vs algo_1 约 <span class="num">3</span>，algo_2 被分配了更大的订单<br>
+        ✅ <strong>exec_intensity</strong>：algo_2 分布整体右移约 <span class="num">1 个单位</span>（执行强度更高）<br>
+        ❌ volatility / averageSpread / duration：两组无差异，不是路由偏差来源</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">确认混淆变量 → 验证特征函数形式</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q4 -->
+    <div class="node phase-rel" data-idx="5" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q4</span>
+        <span class="node-title">特征与 IS 关系验证 <span class="en">Feature–IS Functional Form</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>在建模前验证各特征与 IS 的关系形式（线性 / 非线性），为 Q5 特征变换提供依据：</p>
+        <div class="pills">
+          <span class="pill">Spearman ρ</span>
+          <span class="pill">LOWESS frac=0.2</span>
+        </div>
+        <table>
+          <tr><th>特征</th><th>预期关系</th><th>原因（微观结构）</th></tr>
+          <tr><td>volatility</td><td>正相关 ↑</td><td>波动 → 逆向选择成本</td></tr>
+          <tr><td>averageSpread</td><td>正相关 ↑</td><td>价差宽 → 流动性差</td></tr>
+          <tr><td>ordersize</td><td>正相关 ↑</td><td>平方根市场冲击定律</td></tr>
+          <tr><td>duration</td><td>模糊</td><td>减少即时冲击 vs. 增加时序风险</td></tr>
+          <tr><td>exec_intensity</td><td>正相关 ↑</td><td>执行速率快 → 冲击大</td></tr>
+        </table>
+        <div class="finding"><strong>用途：</strong> LOWESS 揭示非线性形态 → 决定是否做 log / sqrt 变换（Q5）。</div>
+        <div class="result"><strong>EDA 实证（Spearman ρ with IS_Slippage）：</strong><br>
+        volatility <span class="num">0.413</span> · ordersize <span class="num">0.518</span> · exec_intensity <span class="num">0.466</span> · averageSpread <span class="num">0.002</span> · duration <span class="num">-0.012</span><br>
+        ⚠️ <strong>多重共线性警告：</strong>ordersize ↔ exec_intensity ρ = <span class="num">0.887</span>（高度共线，回归时需 sqrt 变换分离）<br>
+        LOWESS 确认：ordersize 呈凹形单调上升曲线 → sqrt 变换成立；averageSpread LOWESS 近水平 → 与 ρ=0.002 吻合</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">函数形式已知 → 理论驱动特征变换 + 因果建模</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q5 OLS -->
+    <div class="node phase-ols" data-idx="6" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q5</span>
+        <span class="node-title">核心 OLS 因果回归 <span class="en">Core OLS — Causal Regression</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>控制订单难度后，algo_2 相比 algo_1 的真实 IS 溢价是多少？理论驱动特征变换：</p>
+        <code>log_vol        = log(volatility)        # 线性化乘法关系
+log_spread     = log(averageSpread)     # 同上
+sqrt_size      = sqrt(ordersize)        # Almgren-Chriss 平方根冲击定律
+sqrt_intensity = sqrt(exec_intensity)   # POV 代理
+spread_x_size  = log_spread × sqrt_size # 交互项：双重惩罚
+algo_dummy     = 1 if algo_2 else 0    # ← 关键哑变量</code>
+        <code>IS = β₀ + β₁·log_vol + β₂·log_spread + β₃·sqrt_size
+   + β₄·duration + β₅·sqrt_intensity + β₆·spread_x_size
+   + β₇·algo_dummy + ε</code>
+        <div class="finding">
+          <strong>β₇ 是最终答案：</strong><br>
+          β₇ &gt; 0 且 p &lt; 0.05 → algo_2 更贵（bps）<br>
+          β₇ &lt; 0 且 p &lt; 0.05 → algo_2 更省（bps）<br>
+          p ≥ 0.05 → 无显著差异，原始差距完全由路由偏差解释
+        </div>
+        <div class="result"><strong>EDA 实证：</strong> β₇ = <span class="num">-83.58 bps</span>（p=0.0000，95% CI: [-86.50, -80.66]）<br>
+        残差图呈喇叭形（异方差成立）→ 需 HC3 修正。QQ 图两端翘起（厚尾）。<br>
+        系数图：log_vol 最强（约 <span class="num">+200 bps</span>）> sqrt_size（约 <span class="num">+30 bps</span>）> algo_dummy（<span class="num">-84 bps</span>）。<br>
+        <strong>结论方向反转：</strong>Q1 原始 +40 bps → Q5 控制后 <span class="num">-83.6 bps</span>，路由偏差被完全识别。</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">OLS 结果确立 → 三层稳健性交叉验证</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q5 Robust -->
+    <div class="node phase-robust" data-idx="7" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q5R</span>
+        <span class="node-title">稳健性检验三层 <span class="en">Robustness: HC3 + Huber + Quantile</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>单一 OLS 可能受异方差或残差异常值影响，三层交叉验证：</p>
+        <div class="pills">
+          <span class="pill">① Breusch-Pagan + HC3</span>
+          <span class="pill">② Huber ε=1.35</span>
+          <span class="pill">③ Quantile Q10–Q90</span>
+        </div>
+        <code># ① 异方差检验
+bp_stat, bp_p, _, _ = het_breuschpagan(residuals, X)
+# p &lt; 0.05 → 必须用 HC3 标准误
+
+# ② Huber 回归
+HuberRegressor(epsilon=1.35, max_iter=500)
+
+# ③ 分位数回归
+for q in [0.10, 0.25, 0.50, 0.75, 0.90]:
+    qr = smf.quantreg(formula, df).fit(q=q, max_iter=2000)</code>
+        <div class="finding">
+          <strong>验证逻辑：</strong> Huber 与 OLS 的 algo_dummy 符号一致 → 对残差异常值稳健。分位数回归检验成本溢价是否集中在尾部（极端难订单）。
+        </div>
+        <div class="result"><strong>EDA 实证（分位数回归）：</strong><br>
+        Q10: <span class="num">-63 bps</span> · Q25: <span class="num">-70 bps</span> · Q50: <span class="num">-76 bps</span> · Q75: <span class="num">-80 bps</span> · Q90: <span class="num">-78 bps</span><br>
+        全分位段均为负 → algo_2 优势<strong>全分布均匀分布</strong>，不是极端单撑起来的。越难的订单（高 IS 端），algo_2 优势越明显。</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">统计结论确认 → 转化为 $ 商业影响</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q5 P&L -->
+    <div class="node phase-pnl" data-idx="8" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">P&L</span>
+        <span class="node-title">经济显著性转化 <span class="en">Economic Significance — Dollar Impact</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>将统计显著的 β₇（单位：bps）转化为交易台实际可感知的美元损益：</p>
+        <code>Dollar Impact = (β₇ / 10,000) × Total Notional of algo_1 orders
+
+# 例：β₇ = +50 bps, Total Notional = 10 亿 CNY
+# Impact = (50 / 10000) × 1,000,000,000 = 500 万 CNY / year
+# → algo_2 每年多花 500 万 CNY</code>
+        <div class="finding"><strong>决策桥梁：</strong> 将统计结论（bps）翻译为商业语言（CNY），供交易台直接决策是否切换算法。</div>
+        <div class="result"><strong>EDA 实证：</strong> algo_1 总名义金额 = <span class="num">6,571 亿 CNY</span>。β₇ = -83.58 bps。<br>
+        Dollar Impact = (-83.58 / 10,000) × 657,140,627,123 = <span class="num">-54.9 亿 CNY / year</span>（节省）<br>
+        每交易 <span class="num">100 万 CNY</span> 节省 <span class="num">8.36 元</span>，直接体现在执行成本报告中。<br>
+        <strong>建议：立即启动算法迁移评估。</strong></div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">Dollar impact 确立 → 警惕存活偏差作假</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q6 -->
+    <div class="node phase-fill" data-idx="9" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q6</span>
+        <span class="node-title">部分成交与存活偏差 <span class="en">Partial Fills & Survivorship Bias</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>题目假设全量成交。Q6 放开此假设——揭示"作弊算法"的存在：只在市场朝有利方向移动时成交，报告 IS ≈ 0，但实际通过极低成交率换来虚假优势。</p>
+        <code>Expanded_IS_i = r_i × IS_filled_i + (1 - r_i) × OppCost_i
+
+r_i      = filled_qty / order_qty          # 成交率
+OppCost  = IS_Slippage + Normal(50, 80)    # 未成交机会成本
+
+# 作弊算法：成交率与 IS 负相关
+cherry_fill = clip(1 - 0.0005 × IS_Slippage + noise, 0.05, 1.0)
+
+# 中性算法：成交率独立于 IS
+neutral_fill = clip(0.6 + noise, 0.05, 1.0)</code>
+        <div class="finding"><strong>结论：</strong> 报告 IS ≈ 0 ≠ 算法优秀。必须同时公示<strong>成交率 + Expanded IS</strong>，否则指标可被操纵。</div>
+        <div class="result"><strong>EDA 实证：</strong> Cherry-picker 成交率几乎全部堆在 <span class="num">1.0</span>（刻意回避高 IS 单不完全成交）。<br>
+        Filled-only IS（有偏）= <span class="num">223 bps</span> · Cherry Expanded = <span class="num">224 bps</span> · Neutral Expanded = <span class="num">233 bps</span><br>
+        偏差仅 <span class="num">10 bps</span>（约 4.3%），Q5 主结论（83.6 bps）不受影响，但方向明确：cherry-picking 让算法看起来比实际好。</div>
+      </div>
+    </div>
+
+    <div class="connector">
+      <div class="arrow-track"></div>
+      <span class="c-label">偏差边界确立 → 非线性框架交叉验证最终结论</span>
+      <div class="arrow-bottom"></div>
+      <div class="arrow-head"></div>
+    </div>
+
+    <!-- Q7 -->
+    <div class="node phase-ml" data-idx="10" tabindex="-1" onclick="toggle(this)">
+      <div class="node-header">
+        <span class="badge">Q7</span>
+        <span class="node-title">LightGBM + SHAP 非线性验证 <span class="en">Non-Linear Cross-Validation</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="node-body">
+        <p>OLS 假设线性关系，但市场冲击在流动性阈值处可能发生非线性跳跃。LightGBM 捕捉非线性，SHAP 提供理论严格的特征归因：</p>
+        <div class="pills">
+          <span class="pill">n_estimators=300</span>
+          <span class="pill">lr=0.05</span>
+          <span class="pill">num_leaves=31</span>
+          <span class="pill">subsample=0.8</span>
+          <span class="pill">early_stop=30</span>
+        </div>
+        <code>explainer   = shap.TreeExplainer(lgb_model)
+shap_values = explainer.shap_values(X_test)
+
+# 验证 algo_dummy 方向是否与 OLS 一致
+mean_shap_algo2 = shap_values[X_test['algo_dummy']==1, algo_idx].mean()</code>
+        <table>
+          <tr><th>Shapley 公理</th><th>含义</th></tr>
+          <tr><td>效率性</td><td>所有 SHAP 值之和 = 预测值 − 基准值</td></tr>
+          <tr><td>对称性</td><td>贡献相同的特征获得相同 SHAP</td></tr>
+          <tr><td>虚拟性</td><td>无影响特征 SHAP = 0</td></tr>
+          <tr><td>可加性</td><td>组合模型 SHAP = 各模型之和</td></tr>
+        </table>
+        <div class="finding">
+          <strong>最终交叉验证：</strong> OLS β₇ 符号 ↔ SHAP(algo_dummy) 方向一致 → 结论在线性与非线性框架下<strong>均稳健</strong>。
+        </div>
+        <div class="result"><strong>EDA 实证（SHAP 特征重要性排名）：</strong><br>
+        sqrt_size ≈ <span class="num">75</span> · log_vol ≈ <span class="num">60</span> · algo_dummy ≈ <span class="num">30</span> · sqrt_intensity ≈ <span class="num">12</span> · log_spread ≈ <span class="num">2</span><br>
+        algo_dummy SHAP：algo_2=1 的点集中在<strong>负值区</strong>（降低 IS）→ 与 OLS β₇ &lt; 0 方向完全一致。<br>
+        log_spread SHAP 几乎全在 0 附近 → spread 对 IS 贡献极微，与 Spearman ρ=0.002 吻合。</div>
+      </div>
+    </div>
+
+  </div><!-- /pipeline -->
+
+  <!-- Summary -->
+  <div class="summary">
+    <h2>Pipeline Summary — Each Step Informs the Next</h2>
+    <div class="summary-flow">
+      <span class="sf-item" onclick="jumpTo(0)">S0 加载</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(1)">S0.1 截尾</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(2)">Q1 原始比较</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(3)">Q2 加权 IS</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(4)">Q3 混淆检验</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(5)">Q4 函数形式</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(6)">Q5 因果回归</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(7)">Q5R 稳健性</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(8)">P&L 转化</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(9)">Q6 偏差警告</span>
+      <span class="sf-arrow">→</span>
+      <span class="sf-item" onclick="jumpTo(10)">Q7 非线性验证</span>
+    </div>
+    <p style="margin-top:14px;font-size:0.79rem;color:#8b949e;line-height:1.7">
+      S0.1 截尾处理分布可比 → Q1 原始 algo_2 表面贵 <strong style="color:#ffa657">+40–50 bps</strong> → Q2 NW_IS 差距 <strong style="color:#ffa657">71.5 bps</strong>，大单贡献70% → Q3 路由偏差：algo_2 拿到更大的单 → Q4 ordersize/vol 是主驱动（ρ=0.518/0.413），共线性 0.887 → Q5 控制后结论反转 <strong style="color:#56d364">β₇ = −83.6 bps</strong>（p=0.0000）→ Q5R 全分位数负值，HC3 稳健 → P&amp;L 年省 <strong style="color:#56d364">54.9 亿 CNY</strong> → Q6 成交偏差仅 10 bps 不影响主结论 → Q7 SHAP 方向一致，结论框架无关
+    </p>
+  </div>
+</main>
+
+<script>
+  // ── Node data for mini-map ──
+  const META = [
+    { badge: 'S0',   color: '#79c0ff', label: '数据加载' },
+    { badge: 'S0.1', color: '#56d364', label: 'Winsor' },
+    { badge: 'Q1',   color: '#f78166', label: '原始比较' },
+    { badge: 'Q2',   color: '#ffa657', label: '加权 IS' },
+    { badge: 'Q3',   color: '#d2a8ff', label: '分布检验' },
+    { badge: 'Q4',   color: '#79c0ff', label: '函数形式' },
+    { badge: 'Q5',   color: '#56d364', label: '因果回归' },
+    { badge: 'Q5R',  color: '#ffa657', label: '稳健性' },
+    { badge: 'P&L',  color: '#f78166', label: '经济量化' },
+    { badge: 'Q6',   color: '#d2a8ff', label: '存活偏差' },
+    { badge: 'Q7',   color: '#ff7b72', label: 'SHAP验证' },
+  ];
+
+  const nodes = Array.from(document.querySelectorAll('.node'));
+  let focusedIdx = -1;
+
+  // Build mini-map
+  const inner = document.getElementById('minimapInner');
+  META.forEach((m, i) => {
+    if (i > 0) {
+      const arr = document.createElement('span');
+      arr.className = 'mm-arrow';
+      arr.textContent = '›';
+      inner.appendChild(arr);
+    }
+    const item = document.createElement('div');
+    item.className = 'mm-item';
+    const pill = document.createElement('button');
+    pill.className = 'mm-pill';
+    pill.id = `mm-${i}`;
+    pill.style.setProperty('--c', m.color);
+    pill.title = m.label;
+    pill.textContent = m.badge;
+    pill.setAttribute('aria-label', `Jump to ${m.badge}: ${m.label}`);
+    pill.onclick = () => jumpTo(i);
+    item.appendChild(pill);
+    inner.appendChild(item);
+  });
+
+  // ── Toggle expand ──
+  function toggle(node) {
+    const wasActive = node.classList.contains('active');
+    node.classList.toggle('active');
+    updateCounter();
+    const idx = parseInt(node.dataset.idx);
+    setFocus(idx, false);
+  }
+
+  // ── Expand / Collapse all ──
+  function expandAll() {
+    nodes.forEach(n => n.classList.add('active'));
+    updateCounter();
+  }
+  function collapseAll() {
+    nodes.forEach(n => n.classList.remove('active'));
+    updateCounter();
+  }
+
+  // ── Step counter ──
+  function updateCounter() {
+    const expanded = nodes.filter(n => n.classList.contains('active')).length;
+    document.getElementById('stepCounter').textContent = `${expanded} / ${nodes.length} expanded`;
+    nodes.forEach((n, i) => {
+      const pill = document.getElementById(`mm-${i}`);
+      if (pill) pill.classList.toggle('active', n.classList.contains('active'));
+    });
+  }
+
+  // ── Jump to / focus ──
+  function jumpTo(idx) {
+    if (idx < 0 || idx >= nodes.length) return;
+    setFocus(idx, true);
+    // Open it
+    nodes[idx].classList.add('active');
+    updateCounter();
+    // Scroll
+    nodes[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function setFocus(idx, scrollMinimap) {
+    nodes.forEach((n, i) => n.classList.toggle('focused', i === idx));
+    focusedIdx = idx;
+    // Update mini-map scroll
+    if (scrollMinimap) {
+      const pill = document.getElementById(`mm-${idx}`);
+      if (pill) pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }
+
+  // ── Keyboard navigation ──
+  document.addEventListener('keydown', e => {
+    if (['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) {
+      e.preventDefault();
+    }
+    if (e.key === 'ArrowDown') {
+      const next = Math.min(focusedIdx + 1, nodes.length - 1);
+      if (focusedIdx === -1) {
+        jumpTo(0);
+      } else {
+        jumpTo(next);
+      }
+    } else if (e.key === 'ArrowUp') {
+      const prev = Math.max(focusedIdx - 1, 0);
+      jumpTo(prev);
+    } else if (e.key === 'Enter' && focusedIdx >= 0) {
+      toggle(nodes[focusedIdx]);
+      nodes[focusedIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
+  // Init counter
+  updateCounter();
+</script>
+</body>
+</html>
