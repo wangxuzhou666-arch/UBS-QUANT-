@@ -548,6 +548,46 @@
           <tr><td>averageSpread</td><td>~0.05</td><td>~15.01</td></tr>
           <tr><td>duration</td><td>~0.03</td><td>~1.00</td></tr>
         </table>
+
+        <h4 style="color:#8b949e;font-size:0.82rem;margin:16px 0 8px;font-weight:600;letter-spacing:0.04em">📊 Winsorization 前后对比</h4>
+        <table>
+          <tr>
+            <th rowspan="2">字段</th>
+            <th colspan="4" style="text-align:center;color:#f78166">Before（原始数据）</th>
+            <th colspan="4" style="text-align:center;color:#56d364">After（截尾后）</th>
+          </tr>
+          <tr>
+            <th>Mean</th><th>Std</th><th>Min</th><th>Max</th>
+            <th>Mean</th><th>Std</th><th>Min</th><th>Max</th>
+          </tr>
+          <tr>
+            <td>IS_Slippage</td>
+            <td><span class="num">223.88</span></td><td>197.74</td><td>-450.98</td><td style="color:#f78166"><span class="num">2433.72</span></td>
+            <td><span class="num">222.49</span></td><td>186.67</td><td>-283</td><td style="color:#56d364"><span class="num">~723</span></td>
+          </tr>
+          <tr>
+            <td>ordersize</td>
+            <td><span class="num">72.10</span></td><td>114.59</td><td>0.46</td><td style="color:#f78166"><span class="num">3286.61</span></td>
+            <td><span class="num">68.60</span></td><td>79.05</td><td>0.72</td><td style="color:#56d364"><span class="num">~362.52</span></td>
+          </tr>
+          <tr>
+            <td>averageSpread</td>
+            <td><span class="num">4.43</span></td><td>5.73</td><td>0.05</td><td style="color:#f78166"><span class="num">172.03</span></td>
+            <td><span class="num">4.17</span></td><td>3.95</td><td>0.05</td><td style="color:#56d364"><span class="num">~15.01</span></td>
+          </tr>
+          <tr>
+            <td>duration</td>
+            <td><span class="num">0.70</span></td><td>0.27</td><td>0.00</td><td>1.00</td>
+            <td><span class="num">0.70</span></td><td>0.27</td><td>0.03</td><td>1.00</td>
+          </tr>
+        </table>
+        <div class="finding" style="margin-top:10px">
+          <strong>对比要点：</strong>
+          ordersize max 从 <span class="num" style="color:#f78166">3286.61</span> 收敛至 <span class="num" style="color:#56d364">362.52</span>（压缩 89%），
+          averageSpread max 从 <span class="num" style="color:#f78166">172.03</span> 收敛至 <span class="num" style="color:#56d364">15.01</span>（压缩 91%），
+          IS_Slippage max 从 <span class="num" style="color:#f78166">2433.72</span> 收敛至 <span class="num" style="color:#56d364">~723</span>（压缩 70%）。
+          Std 同步下降，极端杠杆点被有效消除，分布形态保留。
+        </div>
         <div class="finding"><strong>Why:</strong> 极端值（fat-finger / 黑天鹅）会严重偏移 OLS 系数，必须在回归前处理。</div>
         <div class="result"><strong>EDA 实证：</strong> Winsor 前 algo_2 右尾延伸至 <span class="num">2500 bps</span>，截尾后收敛至约 <span class="num">850 bps</span>。处理后 algo_1 峰值更高（低成本区集中），algo_2 分布更宽（成本离散度更大）。两组分布至此才具有可比性。</div>
         <img class="plot" src="plots/q0_winsorization.png" alt="Winsorization before/after distribution" loading="lazy">
