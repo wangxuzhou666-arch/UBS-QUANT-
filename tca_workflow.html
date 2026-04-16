@@ -381,6 +381,38 @@
   }
   .connector:hover .arrow-head { border-top-color: #58a6ff; }
 
+  /* ── Plot image ── */
+  .plot {
+    width: 100%;
+    max-width: 820px;
+    display: block;
+    margin: 14px auto 4px;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    background: #fff;
+    cursor: zoom-in;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .plot:hover { border-color: #58a6ff; }
+  .plot.zoomed {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    max-width: 92vw;
+    max-height: 92vh;
+    width: auto;
+    z-index: 200;
+    cursor: zoom-out;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+  }
+  .plot-caption {
+    font-size: 0.72rem;
+    color: #8b949e;
+    text-align: center;
+    margin-bottom: 10px;
+    font-style: italic;
+  }
+
   /* ── Table inside body ── */
   table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin: 8px 0; }
   th { background: #21262d; color: #8b949e; padding: 6px 10px; text-align: left; font-weight: 600; }
@@ -497,6 +529,8 @@
         </table>
         <div class="finding"><strong>Why:</strong> 极端值（fat-finger / 黑天鹅）会严重偏移 OLS 系数，必须在回归前处理。</div>
         <div class="result"><strong>EDA 实证：</strong> Winsor 前 algo_2 右尾延伸至 <span class="num">2500 bps</span>，截尾后收敛至约 <span class="num">850 bps</span>。处理后 algo_1 峰值更高（低成本区集中），algo_2 分布更宽（成本离散度更大）。两组分布至此才具有可比性。</div>
+        <img class="plot" src="plots/q0_winsorization.png" alt="Winsorization before/after distribution" loading="lazy">
+        <p class="plot-caption">Figure S0.1 — Winsorization 前后 IS 分布对比</p>
       </div>
     </div>
 
@@ -528,6 +562,8 @@ boots = [np.mean(np.random.choice(g1,n,True)) - np.mean(np.random.choice(g2,n,Tr
          for _ in range(10_000)]</code>
         <div class="finding"><strong>发现：</strong> algo_1 原始 IS 显著低于 algo_2——但此差异<strong>不能归因于算法优劣</strong>，可能是路由偏差（Q3 验证）。</div>
         <div class="result"><strong>EDA 实证：</strong> Violin 图显示 algo_2 中位数比 algo_1 高约 <span class="num">40–50 bps</span>。CDF 图中蓝线（algo_1）全程在橙线左侧，最大分离发生在 <span class="num">100–300 bps</span> 区间。KDE 显示 algo_1 峰更高更窄，algo_2 右偏更严重。表面结论：algo_2 更贵——但此时<strong>尚未控制订单难度</strong>。</div>
+        <img class="plot" src="plots/q1_distribution.png" alt="Raw IS distribution comparison: violin / CDF / KDE" loading="lazy">
+        <p class="plot-caption">Figure Q1 — algo_1 vs algo_2 原始 IS 分布（Violin / CDF / KDE）</p>
       </div>
     </div>
 
@@ -552,6 +588,8 @@ boots = [np.mean(np.random.choice(g1,n,True)) - np.mean(np.random.choice(g2,n,Tr
         <code>Contribution_i = (IS_i × notional_i) / Σ(IS_j × notional_j) × 100%</code>
         <div class="finding"><strong>意义：</strong> 对路由决策有直接指导——优先优化高名义价值订单。</div>
         <div class="result"><strong>EDA 实证：</strong> NW_IS：algo_1 = <span class="num">206.9 bps</span>，algo_2 = <span class="num">278.4 bps</span>，差距 <span class="num">+71.5 bps</span>。Pareto 曲线显示前 <span class="num">20%</span> 大单贡献约 <span class="num">70%</span> 累积 IS。algo_2 累积曲线上升更陡峭，说明大单成本占比更高——大单路由选择是成本控制的核心战场。</div>
+        <img class="plot" src="plots/q2_contribution.png" alt="Pareto contribution of notional-weighted IS" loading="lazy">
+        <p class="plot-caption">Figure Q2 — Notional-Weighted IS 与 Pareto 累积贡献曲线</p>
       </div>
     </div>
 
@@ -580,6 +618,8 @@ boots = [np.mean(np.random.choice(g1,n,True)) - np.mean(np.random.choice(g2,n,Tr
         ✅ <strong>ordersize</strong>：algo_2 log 中心约 <span class="num">4</span> vs algo_1 约 <span class="num">3</span>，algo_2 被分配了更大的订单<br>
         ✅ <strong>exec_intensity</strong>：algo_2 分布整体右移约 <span class="num">1 个单位</span>（执行强度更高）<br>
         ❌ volatility / averageSpread / duration：两组无差异，不是路由偏差来源</div>
+        <img class="plot" src="plots/q3_feature_distributions.png" alt="Feature distributions across algorithms with KS test" loading="lazy">
+        <p class="plot-caption">Figure Q3 — 各特征在两算法间的 KDE 分布与 KS 检验</p>
       </div>
     </div>
 
@@ -616,6 +656,10 @@ boots = [np.mean(np.random.choice(g1,n,True)) - np.mean(np.random.choice(g2,n,Tr
         volatility <span class="num">0.413</span> · ordersize <span class="num">0.518</span> · exec_intensity <span class="num">0.466</span> · averageSpread <span class="num">0.002</span> · duration <span class="num">-0.012</span><br>
         ⚠️ <strong>多重共线性警告：</strong>ordersize ↔ exec_intensity ρ = <span class="num">0.887</span>（高度共线，回归时需 sqrt 变换分离）<br>
         LOWESS 确认：ordersize 呈凹形单调上升曲线 → sqrt 变换成立；averageSpread LOWESS 近水平 → 与 ρ=0.002 吻合</div>
+        <img class="plot" src="plots/q4_correlation_heatmap.png" alt="Spearman correlation heatmap" loading="lazy">
+        <p class="plot-caption">Figure Q4a — Spearman 相关系数热图（含共线性诊断）</p>
+        <img class="plot" src="plots/q4_scatter_lowess.png" alt="Feature vs IS scatter with LOWESS fit" loading="lazy">
+        <p class="plot-caption">Figure Q4b — 各特征 vs IS 散点 + LOWESS 拟合（函数形式识别）</p>
       </div>
     </div>
 
@@ -654,6 +698,8 @@ algo_dummy     = 1 if algo_2 else 0    # ← 关键哑变量</code>
         残差图呈喇叭形（异方差成立）→ 需 HC3 修正。QQ 图两端翘起（厚尾）。<br>
         系数图：log_vol 最强（约 <span class="num">+200 bps</span>）> sqrt_size（约 <span class="num">+30 bps</span>）> algo_dummy（<span class="num">-84 bps</span>）。<br>
         <strong>结论方向反转：</strong>Q1 原始 +40 bps → Q5 控制后 <span class="num">-83.6 bps</span>，路由偏差被完全识别。</div>
+        <img class="plot" src="plots/q5_diagnostics.png" alt="OLS diagnostics: residuals, QQ plot, coefficients" loading="lazy">
+        <p class="plot-caption">Figure Q5 — OLS 诊断图（残差 / QQ / 系数与 95% CI）</p>
       </div>
     </div>
 
@@ -694,6 +740,8 @@ for q in [0.10, 0.25, 0.50, 0.75, 0.90]:
         <div class="result"><strong>EDA 实证（分位数回归）：</strong><br>
         Q10: <span class="num">-63 bps</span> · Q25: <span class="num">-70 bps</span> · Q50: <span class="num">-76 bps</span> · Q75: <span class="num">-80 bps</span> · Q90: <span class="num">-78 bps</span><br>
         全分位段均为负 → algo_2 优势<strong>全分布均匀分布</strong>，不是极端单撑起来的。越难的订单（高 IS 端），algo_2 优势越明显。</div>
+        <img class="plot" src="plots/q5_quantile_regression.png" alt="Quantile regression results Q10–Q90" loading="lazy">
+        <p class="plot-caption">Figure Q5R — 分位数回归 algo_dummy 系数 (Q10–Q90)</p>
       </div>
     </div>
 
@@ -756,6 +804,8 @@ neutral_fill = clip(0.6 + noise, 0.05, 1.0)</code>
         <div class="result"><strong>EDA 实证：</strong> Cherry-picker 成交率几乎全部堆在 <span class="num">1.0</span>（刻意回避高 IS 单不完全成交）。<br>
         Filled-only IS（有偏）= <span class="num">223 bps</span> · Cherry Expanded = <span class="num">224 bps</span> · Neutral Expanded = <span class="num">233 bps</span><br>
         偏差仅 <span class="num">10 bps</span>（约 4.3%），Q5 主结论（83.6 bps）不受影响，但方向明确：cherry-picking 让算法看起来比实际好。</div>
+        <img class="plot" src="plots/q6_partial_fill.png" alt="Partial fill & survivorship bias comparison" loading="lazy">
+        <p class="plot-caption">Figure Q6 — 部分成交与存活偏差：Cherry-picker vs Neutral 对比</p>
       </div>
     </div>
 
@@ -801,6 +851,8 @@ mean_shap_algo2 = shap_values[X_test['algo_dummy']==1, algo_idx].mean()</code>
         sqrt_size ≈ <span class="num">75</span> · log_vol ≈ <span class="num">60</span> · algo_dummy ≈ <span class="num">30</span> · sqrt_intensity ≈ <span class="num">12</span> · log_spread ≈ <span class="num">2</span><br>
         algo_dummy SHAP：algo_2=1 的点集中在<strong>负值区</strong>（降低 IS）→ 与 OLS β₇ &lt; 0 方向完全一致。<br>
         log_spread SHAP 几乎全在 0 附近 → spread 对 IS 贡献极微，与 Spearman ρ=0.002 吻合。</div>
+        <img class="plot" src="plots/q7_shap.png" alt="SHAP feature importance and dependence plots" loading="lazy">
+        <p class="plot-caption">Figure Q7 — LightGBM SHAP 特征重要性与方向性</p>
       </div>
     </div>
 
@@ -948,6 +1000,16 @@ mean_shap_algo2 = shap_values[X_test['algo_dummy']==1, algo_idx].mean()</code>
     } else if (e.key === 'Enter' && focusedIdx >= 0) {
       toggle(nodes[focusedIdx]);
       nodes[focusedIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
+  // ── Image zoom ──
+  document.addEventListener('click', e => {
+    if (e.target.classList && e.target.classList.contains('plot')) {
+      e.stopPropagation();
+      e.target.classList.toggle('zoomed');
+    } else {
+      document.querySelectorAll('.plot.zoomed').forEach(el => el.classList.remove('zoomed'));
     }
   });
 
