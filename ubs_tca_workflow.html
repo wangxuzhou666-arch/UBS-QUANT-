@@ -394,17 +394,38 @@
     transition: border-color 0.2s, transform 0.2s;
   }
   .plot:hover { border-color: #58a6ff; }
-  .plot.zoomed {
+  /* ── Lightbox overlay ── */
+  #lightbox {
+    display: none;
     position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%) scale(1);
-    max-width: 92vw;
-    max-height: 92vh;
-    width: auto;
-    z-index: 200;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 1000;
     cursor: zoom-out;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
   }
+  #lightbox.open { display: flex; }
+  #lightbox img {
+    max-width: 96vw;
+    max-height: 94vh;
+    border-radius: 8px;
+    box-shadow: 0 10px 60px rgba(0,0,0,0.9);
+    background: #fff;
+  }
+  #lightbox-close {
+    position: absolute;
+    top: 14px; right: 22px;
+    font-size: 2.2rem;
+    color: #fff;
+    cursor: pointer;
+    line-height: 1;
+    font-weight: 300;
+    opacity: 0.75;
+    transition: opacity 0.15s;
+  }
+  #lightbox-close:hover { opacity: 1; }
   .plot-caption {
     font-size: 0.72rem;
     color: #8b949e;
@@ -1003,14 +1024,26 @@ mean_shap_algo2 = shap_values[X_test['algo_dummy']==1, algo_idx].mean()</code>
     }
   });
 
-  // ── Image zoom ──
-  document.addEventListener('click', e => {
-    if (e.target.classList && e.target.classList.contains('plot')) {
+  // ── Image zoom (lightbox overlay) ──
+  const lightbox = document.createElement('div');
+  lightbox.id = 'lightbox';
+  lightbox.innerHTML = '<img id="lightbox-img" alt=""><span id="lightbox-close">×</span>';
+  document.body.appendChild(lightbox);
+  const lbImg = document.getElementById('lightbox-img');
+
+  document.querySelectorAll('img.plot').forEach(img => {
+    img.addEventListener('click', e => {
       e.stopPropagation();
-      e.target.classList.toggle('zoomed');
-    } else {
-      document.querySelectorAll('.plot.zoomed').forEach(el => el.classList.remove('zoomed'));
-    }
+      e.preventDefault();
+      lbImg.src = img.src;
+      lbImg.alt = img.alt;
+      lightbox.classList.add('open');
+    });
+  });
+
+  lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') lightbox.classList.remove('open');
   });
 
   // Init counter
